@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive Stochastic Resonance Simulation</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    body {
+      background-color: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    .container {
+      width: 100%;
+      max-width: 1100px;
+      background: #1e293b;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 1px solid #334155;
+      padding-bottom: 12px;
+    }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #38bdf8;
+    }
+    .badge {
+      font-size: 0.8rem;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      background: #0369a1;
+      color: #e0f2fe;
+      font-weight: 600;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 20px;
+      align-items: stretch;
+    }
+    @media (max-width: 800px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .panel {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+    }
+    .panel-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 8px;
+    }
+    .canvas-container {
+      position: relative;
+      flex: 1;
+      min-height: 250px;
+    }
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 16px 20px;
+    }
+    .control-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .slider-label {
+      min-width: 140px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #cbd5e1;
+    }
+    .slider-val {
+      min-width: 65px;
+      font-family: monospace;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #38bdf8;
+    }
+    input[type=range] {
+      flex: 1;
+      height: 8px;
+      border-radius: 5px;
+      background: #334155;
+      outline: none;
+      -webkit-appearance: none;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #38bdf8;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
+      transition: transform 0.1s;
+    }
+    input[type=range]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+    }
+    .btn-row {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    button {
+      background: #0284c7;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #0369a1;
+    }
+    .regime-hint {
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+    .regime-hint span {
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>Stochastic Resonance Simulation</h1>
+    <div class="badge" id="regimeBadge">Optimal Resonance</div>
+  </header>
+
+  <div class="grid">
+    <!-- Potential Landscape -->
+    <div class="panel">
+      <div class="panel-title">Potential Landscape: V(x) - x·F(t)</div>
+      <div class="canvas-container">
+        <canvas id="potCanvas"></canvas>
+      </div>
+    </div>
+
+    <!-- Trajectory Graph -->
+    <div class="panel">
+      <div class="panel-title">Particle Trajectory x(t) over Time</div>
+      <div class="canvas-container">
+        <canvas id="trajCanvas"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive Controls -->
+  <div class="controls">
+    <div class="control-row">
+      <span class="slider-label">Noise Intensity (D):</span>
+      <input type="range" id="noiseSlider" min="0.001" max="0.45" step="0.002" value="0.05">
+      <span class="slider-val" id="noiseVal">0.050</span>
+      <button id="resampleBtn">New Noise Seed</button>
+    </div>
+    <div class="regime-hint" id="statusDescription">
+      Current Regime: <span>Stochastic Resonance</span> (Periodic barrier hopping synchronized with signal).
+    </div>
+  </div>
+</div>
+
+<script>
+  // ==========================================
+  // Simulation Constants & Time Grid
+  // ==========================================
+  const a = 1.0;
+  const b = 1.0;
+  const A0 = 0.28;
+  const Omega = 0.05;
+  const totalTime = 250.0;
+  const dt = 0.08;
+  const steps = Math.floor(totalTime / dt);
+
+  const tArr = new Float32Array(steps);
+  for (let i = 0; i < steps; i++) tArr[i] = i * dt;
+
+  // Box-Muller Gaussian Noise Buffer
+  let gaussianBuffer = new Float32Array(steps);
+  function generateGaussianNoise() {
+    for (let i = 0; i < steps; i += 2) {
+      const u1 = Math.max(1e-15, Math.random());
+      const u2 = Math.random();
+      const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+      const z1 = Math.sqrt(-2.0 * Math.log(u1)) * Math.sin(2.0 * Math.PI * u2);
+      gaussianBuffer[i] = z0;
+      if (i + 1 < steps) gaussianBuffer[i + 1] = z1;
+    }
+  }
+  generateGaussianNoise();
+
+  // Euler-Maruyama Integration
+  function computeTrajectory(D) {
+    const x = new Float32Array(steps);
+    x[0] = -1.0;
+    const noiseScale = Math.sqrt(2.0 * D * dt);
+
+    for (let i = 0; i < steps - 1; i++) {
+      const xi = x[i];
+      const ti = tArr[i];
+      const f_det = xi - (xi * xi * xi) + A0 * Math.cos(Omega * ti);
+      x[i + 1] = xi + f_det * dt + noiseScale * gaussianBuffer[i];
+    }
+    return x;
+  }
+
+  // ==========================================
+  // Chart.js Trajectory Setup
+  // ==========================================
+  const trajCtx = document.getElementById('trajCanvas').getContext('2d');
+  
+  // Downsample trajectory for smoother rendering
+  const stride = 2;
+  const chartLabels = [];
+  for (let i = 0; i < steps; i += stride) chartLabels.push(tArr[i].toFixed(0));
+
+  const trajChart = new Chart(trajCtx, {
+    type: 'line',
+    data: {
+      labels: chartLabels,
+      datasets: [
+        {
+          label: 'Particle Position x(t)',
+          borderColor: '#38bdf8',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          data: [],
+          tension: 0.1
+        },
+        {
+          label: 'Periodic Signal (scaled)',
+          borderColor: 'rgba(251, 146, 60, 0.4)',
+          borderWidth: 1.2,
+          pointRadius: 0,
+          borderDash: [4, 4],
+          data: chartLabels.map((_, idx) => (A0 * Math.cos(Omega * tArr[idx * stride]) * 2.5))
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      scales: {
+        x: {
+          title: { display: true, text: 'Time (s)', color: '#94a3b8' },
+          grid: { color: 'rgba(51, 65, 85, 0.3)' },
+          ticks: { color: '#94a3b8', maxTicksLimit: 10 }
+        },
+        y: {
+          min: -2.0,
+          max: 2.0,
+          title: { display: true, text: 'Position x', color: '#94a3b8' },
+          grid: { color: 'rgba(51, 65, 85, 0.3)' },
+          ticks: { color: '#94a3b8' }
+        }
+      },
+      plugins: {
+        legend: { labels: { color: '#cbd5e1', font: { size: 11 } } }
+      }
+    }
+  });
+
+  // ==========================================
+  // Potential Landscape Setup
+  // ==========================================
+  const potCtx = document.getElementById('potCanvas').getContext('2d');
+  const xGrid = [];
+  for (let xv = -1.7; xv <= 1.7; xv += 0.05) xGrid.push(xv);
+
+  const potChart = new Chart(potCtx, {
+    type: 'line',
+    data: {
+      labels: xGrid.map(v => v.toFixed(2)),
+      datasets: [{
+        label: 'V_eff(x)',
+        borderColor: '#f8fafc',
+        borderWidth: 2,
+        pointRadius: 0,
+        data: xGrid.map(xv => -0.5 * (xv * xv) + 0.25 * (xv ** 4)),
+        tension: 0.2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      scales: {
+        x: {
+          title: { display: true, text: 'Coordinate x', color: '#94a3b8' },
+          grid: { color: 'rgba(51, 65, 85, 0.3)' },
+          ticks: { color: '#94a3b8', maxTicksLimit: 7 }
+        },
+        y: {
+          min: -0.45,
+          max: 0.5,
+          title: { display: true, text: 'Potential V', color: '#94a3b8' },
+          grid: { color: 'rgba(51, 65, 85, 0.3)' },
+          ticks: { color: '#94a3b8' }
+        }
+      },
+      plugins: {
+        legend: { display: false }
+      }
+    }
+  });
+
+  // ==========================================
+  // Interactive Update Logic
+  // ==========================================
+  const slider = document.getElementById('noiseSlider');
+  const valDisplay = document.getElementById('noiseVal');
+  const badge = document.getElementById('regimeBadge');
+  const desc = document.getElementById('statusDescription');
+  const resampleBtn = document.getElementById('resampleBtn');
+
+  function update() {
+    const D = parseFloat(slider.value);
+    valDisplay.textContent = D.toFixed(3);
+
+    // Update dynamic state text
+    if (D < 0.02) {
+      badge.textContent = "Sub-Threshold (Trapped)";
+      badge.style.background = "#475569";
+      desc.innerHTML = "Current Regime: <span style='color:#cbd5e1;'>Sub-Threshold</span> (Noise is insufficient to overcome the barrier; particle remains trapped in one well).";
+    } else if (D <= 0.15) {
+      badge.textContent = "Optimal Stochastic Resonance";
+      badge.style.background = "#0284c7";
+      desc.innerHTML = "Current Regime: <span style='color:#38bdf8;'>Stochastic Resonance</span> (Kramers hopping frequency locks with the weak periodic drive).";
+    } else {
+      badge.textContent = "Over-Threshold (Chaotic)";
+      badge.style.background = "#b91c1c";
+      desc.innerHTML = "Current Regime: <span style='color:#f87171;'>Noise Dominated</span> (Fluctuations overpower the landscape; erratic switching washes out the signal).";
+    }
+
+    // Solve trajectory
+    const xVals = computeTrajectory(D);
+    const sampledData = [];
+    for (let i = 0; i < steps; i += stride) {
+      sampledData.push(xVals[i]);
+    }
+    trajChart.data.datasets[0].data = sampledData;
+    trajChart.update('none');
+  }
+
+  slider.addEventListener('input', update);
+  resampleBtn.addEventListener('click', () => {
+    generateGaussianNoise();
+    update();
+  });
+
+  // Initial draw
+  update();
+</script>
+
+</body>
+</html>
